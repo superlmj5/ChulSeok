@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>학생 출석부</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            user-select: none; /* 드래그 시 텍스트 선택 방지 */
+        }
+        .student-tag {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin: 1px;
+            color: #333;
+            font-weight: 500;
+            width: 100%;
+            word-break: keep-all;
+        }
+        .mgmt-tag {
+            width: auto;
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        #student-list { }
+        .attendance-cell {
+            height: 105px;
+            width: 110px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            vertical-align: top;
+            border: 1px solid #e5e7eb; /* 기본 테두리 추가 */
+            box-sizing: border-box;
+        }
+        .attendance-cell.cell-selected {
+            background-color: #dbeafe;
+            border: 2px solid #60a5fa; /* 선택 시 테두리 강조 */
+        }
+        .student-grid-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 2px;
+            padding: 2px;
+            height: 100%;
+            align-content: start;
+        }
+        .custom-text-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            font-weight: 700;
+            font-size: 1rem;
+            text-align: center;
+            padding: 4px;
+        }
+        .date-input {
+            width: 100%;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.375rem;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        #print-area table {
+            table-layout: fixed;
+        }
+        #custom-color-picker, #custom-text-color-picker {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-color: transparent;
+            border: none;
+            cursor: pointer;
+        }
+        #custom-color-picker::-webkit-color-swatch, #custom-text-color-picker::-webkit-color-swatch {
+            border-radius: 0.5rem; /* 크기에 맞춰 둥글게 조정 */
+            border: 1px solid #d1d5db;
+        }
+        #custom-color-picker::-moz-color-swatch, #custom-text-color-picker::-moz-color-swatch {
+            border-radius: 0.5rem; /* 크기에 맞춰 둥글게 조정 */
+            border: 1px solid #d1d5db;
+        }
+
+        @media print {
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area { position: absolute; left: 0; top: 0; width: 100%; }
+            .no-print { display: none; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #ccc; padding: 8px; }
+            .student-tag { border: 1px solid #ddd; }
+            .date-input-wrapper { display: none; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-900">학생 출석부</h1>
+            <div class="flex items-center space-x-2 mt-4 md:mt-0 no-print">
+                <button id="load-button" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">불러오기</button>
+                <button id="save-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">저장하기</button>
+                <button id="print-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">PDF로 출력</button>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-6 no-print">
+            <h2 class="text-xl font-semibold mb-3">학생 관리</h2>
+            <div class="flex flex-col sm:flex-row gap-4">
+                <input type="text" id="student-name-input" placeholder="학생 이름을 입력하세요" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                <button id="add-student-button" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105">학생 추가</button>
+            </div>
+            <div id="student-list" class="mt-4 flex flex-wrap gap-2"></div>
+        </div>
+
+        <div id="print-area" class="bg-white rounded-xl shadow-lg overflow-x-auto">
+            <table class="w-full text-center">
+                <thead id="table-header" class="bg-gray-100"></thead>
+                <tbody id="attendance-grid"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 학생 선택 모달 -->
+    <div id="student-select-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden no-print z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-11/12 max-w-sm">
+            <h3 class="text-lg font-bold mb-4">출석 학생 선택</h3>
+            <div id="modal-student-list" class="space-y-2"></div>
+            <hr class="my-4">
+            <div>
+                <label for="custom-input" class="block text-sm font-medium text-gray-700">임의 입력</label>
+                <div class="flex items-center gap-2 mt-1">
+                    <input type="text" id="custom-input" placeholder="예: 자율학습, 행사" class="flex-grow p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <input type="color" id="custom-text-color-picker" class="w-14 h-12 p-0" title="텍스트 색상 선택">
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="modal-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">취소</button>
+                <button id="modal-confirm" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">확인</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 학생 수정 모달 -->
+    <div id="edit-student-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden no-print z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-11/12 max-w-sm">
+            <h3 class="text-lg font-bold mb-4">학생 정보 수정</h3>
+            <div class="space-y-4">
+                <div>
+                    <label for="edit-student-name" class="block text-sm font-medium text-gray-700">이름</label>
+                    <input type="text" id="edit-student-name" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <input type="hidden" id="original-student-name">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">색상</label>
+                    <div class="mt-2 flex flex-wrap items-center gap-2">
+                        <div id="edit-color-options" class="flex flex-wrap gap-2"></div>
+                        <input type="color" id="custom-color-picker" class="w-10 h-10 p-0 cursor-pointer" title="사용자 지정색">
+                    </div>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="edit-modal-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">취소</button>
+                <button id="edit-modal-confirm" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">저장</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="toast-message" class="fixed bottom-5 right-5 bg-gray-800 text-white py-2 px-4 rounded-lg shadow-lg transition-opacity duration-300 opacity-0 no-print z-50"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const studentNameInput = document.getElementById('student-name-input');
+            const addStudentButton = document.getElementById('add-student-button');
+            const studentListContainer = document.getElementById('student-list');
+            const tableHeader = document.getElementById('table-header');
+            const attendanceGrid = document.getElementById('attendance-grid');
+            const saveButton = document.getElementById('save-button');
+            const loadButton = document.getElementById('load-button');
+            const printButton = document.getElementById('print-button');
+            const toastMessage = document.getElementById('toast-message');
+
+            const modal = document.getElementById('student-select-modal');
+            const modalStudentList = document.getElementById('modal-student-list');
+            const customInput = document.getElementById('custom-input');
+            const customTextColorPicker = document.getElementById('custom-text-color-picker');
+            const modalCancel = document.getElementById('modal-cancel');
+            const modalConfirm = document.getElementById('modal-confirm');
+            
+            const editModal = document.getElementById('edit-student-modal');
+            const editStudentNameInput = document.getElementById('edit-student-name');
+            const originalStudentNameInput = document.getElementById('original-student-name');
+            const editColorOptions = document.getElementById('edit-color-options');
+            const customColorPicker = document.getElementById('custom-color-picker');
+            const editModalCancel = document.getElementById('edit-modal-cancel');
+            const editModalConfirm = document.getElementById('edit-modal-confirm');
+
+            let students = [];
+            let allAttendanceData = {};
+            let weekDates = [];
+            
+            const studentColors = ['#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', '#A0C4FF'];
+            
+            let isDragging = false;
+            let startCell = null;
+            const selectedCells = new Set();
+
+            function getMonday(d) {
+                d = new Date(d);
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                return new Date(d.setDate(diff));
+            }
+
+            function formatDate(date) { return date.toISOString().split('T')[0]; }
+
+            function loadData() {
+                // This function now initializes the application state.
+                students = [];
+                allAttendanceData = {};
+                
+                const monday = getMonday(new Date());
+                weekDates = Array.from({length: 5}, (_, i) => {
+                    const date = new Date(monday);
+                    date.setDate(monday.getDate() + i);
+                    return formatDate(date);
+                });
+                
+                renderStudentList();
+                renderTableHeader();
+                renderAttendanceGrid();
+            }
+
+            function saveData() {
+                const dataToSave = {
+                    students: students,
+                    allAttendanceData: allAttendanceData,
+                    weekDates: weekDates
+                };
+                const dataStr = JSON.stringify(dataToSave, null, 2);
+                const blob = new Blob([dataStr], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'attendance_data.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast("파일이 성공적으로 저장되었습니다.");
+            }
+            
+            function showToast(message) {
+                toastMessage.textContent = message;
+                toastMessage.classList.remove('opacity-0');
+                setTimeout(() => { toastMessage.classList.add('opacity-0'); }, 2000);
+            }
+
+            function renderStudentList() {
+                studentListContainer.innerHTML = '';
+                students.forEach((student) => {
+                    const tag = document.createElement('div');
+                    tag.className = 'student-tag mgmt-tag';
+                    tag.style.backgroundColor = student.color;
+                    tag.dataset.name = student.name;
+                    tag.innerHTML = `<span>${student.name}</span><button data-name="${student.name}" class="delete-student-btn ml-2 text-red-500 hover:text-red-700 font-bold text-lg">&times;</button>`;
+                    studentListContainer.appendChild(tag);
+                });
+            }
+
+            function addStudent() {
+                const name = studentNameInput.value.trim();
+                if (name && students.length < 6 && !students.some(s => s.name === name)) {
+                    students.push({ name, color: studentColors[students.length % studentColors.length] });
+                    studentNameInput.value = '';
+                    renderStudentList();
+                } else if (students.length >= 6) {
+                    showToast("학생은 최대 6명까지 추가할 수 있습니다.");
+                } else if (students.some(s => s.name === name)) {
+                    showToast("이미 등록된 학생입니다.");
+                }
+            }
+            
+            function removeStudent(name) {
+                Object.keys(allAttendanceData).forEach(weekKey => {
+                    const weekData = allAttendanceData[weekKey];
+                    Object.keys(weekData).forEach(cellId => {
+                        if (weekData[cellId].type === 'students') {
+                            weekData[cellId].names = weekData[cellId].names.filter(studentName => studentName !== name);
+                            if (weekData[cellId].names.length === 0) delete weekData[cellId];
+                        }
+                    });
+                    if (Object.keys(weekData).length === 0) delete allAttendanceData[weekKey];
+                });
+                students = students.filter(student => student.name !== name);
+                renderStudentList();
+                renderAttendanceGrid();
+            }
+
+            function handleWeekChange(e) {
+                const monday = getMonday(new Date(e.target.value));
+                weekDates = Array.from({length: 5}, (_, i) => {
+                    const date = new Date(monday);
+                    date.setDate(monday.getDate() + i);
+                    return formatDate(date);
+                });
+                renderTableHeader();
+                renderAttendanceGrid();
+            }
+
+            function renderTableHeader() {
+                tableHeader.innerHTML = '';
+                const dayNames = ['월', '화', '수', '목', '금'];
+                const headerRow = document.createElement('tr');
+                const pickerTh = document.createElement('th');
+                pickerTh.className = 'p-2 border align-middle';
+                pickerTh.innerHTML = `<div class="date-input-wrapper flex flex-col items-center justify-center h-full"><label for="week-picker-input" class="text-xs font-medium mb-1 no-print">주 선택</label><input type="date" id="week-picker-input" value="${weekDates[0]}" class="date-input no-print" title="주 선택"></div>`;
+                headerRow.appendChild(pickerTh);
+                weekDates.forEach((dateStr) => {
+                    const th = document.createElement('th');
+                    th.className = 'p-2 border';
+                    const dayName = dayNames[new Date(dateStr).getDay() - 1];
+                    th.innerHTML = `<div class="font-semibold">${dateStr.substring(5).replace('-', '/')} (${dayName})</div>`;
+                    headerRow.appendChild(th);
+                });
+                tableHeader.appendChild(headerRow);
+                document.getElementById('week-picker-input').addEventListener('change', handleWeekChange);
+            }
+
+            function renderAttendanceGrid() {
+                attendanceGrid.innerHTML = '';
+                const weekKey = weekDates[0];
+                if (!weekKey) return;
+                const currentWeekAttendance = allAttendanceData[weekKey] || {};
+
+                for (let period = 1; period <= 6; period++) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `<td class="p-4 font-semibold border">${period}교시</td>`;
+                    for (let dayIndex = 0; dayIndex < 5; dayIndex++) {
+                        const cellId = `${dayIndex}-${period}`;
+                        const cell = document.createElement('td');
+                        cell.className = 'p-1 border attendance-cell';
+                        cell.dataset.id = cellId;
+                        
+                        const cellData = currentWeekAttendance[cellId];
+                        if (cellData && cellData.type === 'custom') {
+                            cell.innerHTML = `<div class="custom-text-container" style="color: ${cellData.color || '#000000'}">${cellData.text}</div>`;
+                        } else {
+                            const gridContainer = document.createElement('div');
+                            gridContainer.className = 'student-grid-container';
+                            const presentStudents = cellData ? cellData.names : [];
+                            presentStudents.forEach(studentName => {
+                                const student = students.find(s => s.name === studentName);
+                                if (student) {
+                                    const tag = document.createElement('div');
+                                    tag.className = 'student-tag';
+                                    tag.style.backgroundColor = student.color;
+                                    tag.innerHTML = `<span>${student.name}</span>`;
+                                    gridContainer.appendChild(tag);
+                                }
+                            });
+                            cell.appendChild(gridContainer);
+                        }
+                        row.appendChild(cell);
+                    }
+                    attendanceGrid.appendChild(row);
+                }
+            }
+
+            function openModal() {
+                modalStudentList.innerHTML = '';
+                customInput.value = '';
+                
+                const weekKey = weekDates[0];
+                const currentWeekAttendance = allAttendanceData[weekKey] || {};
+                const firstSelectedCellId = selectedCells.values().next().value;
+                const cellData = currentWeekAttendance[firstSelectedCellId];
+
+                if (cellData && cellData.type === 'custom') {
+                    customInput.value = cellData.text;
+                    customTextColorPicker.value = cellData.color || '#000000';
+                } else {
+                    customTextColorPicker.value = '#000000';
+                }
+                
+                if (students.length === 0) {
+                     modalStudentList.innerHTML = '<p class="text-gray-500">먼저 학생을 추가해주세요.</p>';
+                } else {
+                    students.forEach(student => {
+                        const isChecked = cellData && cellData.type === 'students' && cellData.names.includes(student.name);
+                        const label = document.createElement('label');
+                        label.className = 'flex items-center p-2 rounded-md hover:bg-gray-100 cursor-pointer';
+                        label.innerHTML = `<input type="checkbox" data-name="${student.name}" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${isChecked ? 'checked' : ''}><span class="ml-3 text-md">${student.name}</span>`;
+                        modalStudentList.appendChild(label);
+                    });
+                }
+                modal.classList.remove('hidden');
+            }
+
+            function closeModal(clearSelection = true) {
+                modal.classList.add('hidden');
+                if (clearSelection) {
+                    clearCellSelections();
+                }
+            }
+
+            function openEditModal(name) {
+                const student = students.find(s => s.name === name);
+                if (!student) return;
+
+                editStudentNameInput.value = student.name;
+                originalStudentNameInput.value = student.name;
+                customColorPicker.value = student.color;
+
+                editColorOptions.innerHTML = '';
+                studentColors.forEach(color => {
+                    const colorDiv = document.createElement('div');
+                    colorDiv.className = 'w-8 h-8 rounded-full cursor-pointer border-2';
+                    colorDiv.style.backgroundColor = color;
+                    colorDiv.dataset.color = color;
+                    colorDiv.style.borderColor = color.toUpperCase() === student.color.toUpperCase() ? '#3b82f6' : 'transparent';
+                    editColorOptions.appendChild(colorDiv);
+                });
+                
+                editModal.classList.remove('hidden');
+            }
+
+            function closeEditModal() {
+                editModal.classList.add('hidden');
+            }
+
+            function clearCellSelections() {
+                selectedCells.forEach(cellId => {
+                    const cell = attendanceGrid.querySelector(`[data-id="${cellId}"]`);
+                    if (cell) cell.classList.remove('cell-selected');
+                });
+                selectedCells.clear();
+            }
+
+            // --- 이벤트 리스너 ---
+            addStudentButton.addEventListener('click', addStudent);
+            studentNameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addStudent(); });
+            saveButton.addEventListener('click', saveData);
+            
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.json';
+            fileInput.style.display = 'none';
+            document.body.appendChild(fileInput);
+
+            fileInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        if (data && data.students && data.allAttendanceData && data.weekDates) {
+                            students = data.students;
+                            allAttendanceData = data.allAttendanceData;
+                            weekDates = data.weekDates;
+                            
+                            renderStudentList();
+                            renderTableHeader();
+                            renderAttendanceGrid();
+                            showToast("데이터를 성공적으로 불러왔습니다.");
+                        } else {
+                            showToast("잘못된 파일 형식입니다.");
+                        }
+                    } catch (error) {
+                        showToast("파일을 읽는 중 오류가 발생했습니다.");
+                        console.error("Error parsing JSON file:", error);
+                    }
+                };
+                reader.readAsText(file);
+                fileInput.value = ''; // Allow re-loading the same file
+            });
+
+            loadButton.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            printButton.addEventListener('click', () => {
+                const printArea = document.getElementById('print-area');
+                const datePickerWrapper = printArea.querySelector('.date-input-wrapper');
+                const gridContainers = printArea.querySelectorAll('.student-grid-container');
+                const { jsPDF } = window.jspdf;
+
+                // --- PDF 캡처 전처리 ---
+                // 1. PDF에 불필요한 날짜 선택 UI를 보이지 않게 처리합니다.
+                if (datePickerWrapper) {
+                    datePickerWrapper.style.visibility = 'hidden';
+                }
+                // 2. html2canvas의 렌더링 오류를 해결하기 위해, 컨테이너의 높이를
+                //    %가 아닌 px 단위의 고정 값으로 명시적으로 설정합니다.
+                gridContainers.forEach(container => {
+                    container.style.boxSizing = 'border-box';
+                    if (container.parentElement) {
+                         container.style.height = container.parentElement.clientHeight + 'px';
+                    }
+                });
+
+                showToast('PDF 생성 중... 잠시만 기다려주세요.');
+
+                const cleanup = () => {
+                    // --- 캡처 후 스타일 원상 복구 ---
+                    if (datePickerWrapper) {
+                        datePickerWrapper.style.visibility = 'visible';
+                    }
+                    gridContainers.forEach(container => {
+                        container.style.boxSizing = '';
+                        container.style.height = '';
+                    });
+                };
+
+                // 폰트 로딩 및 스타일 적용 시간을 확보하기 위해 지연 후 캡처 실행
+                setTimeout(() => {
+                    html2canvas(printArea, { scale: 2, useCORS: true }).then(canvas => {
+                        const imgData = canvas.toDataURL('image/png');
+                        const orientation = canvas.width > canvas.height ? 'l' : 'p';
+                        const pdf = new jsPDF({
+                            orientation: orientation,
+                            unit: 'pt',
+                            format: [canvas.width, canvas.height]
+                        });
+
+                        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+                        pdf.save('출석부.pdf');
+                        showToast('PDF가 성공적으로 저장되었습니다.');
+                    }).catch(err => {
+                        showToast('PDF 생성에 실패했습니다.');
+                        console.error('PDF generation failed:', err);
+                    }).finally(() => {
+                        cleanup();
+                    });
+                }, 500);
+            });
+
+            studentListContainer.addEventListener('click', (e) => {
+                const deleteButton = e.target.closest('.delete-student-btn');
+                if (deleteButton) {
+                    e.stopPropagation();
+                    removeStudent(deleteButton.dataset.name);
+                } else {
+                    const tag = e.target.closest('.mgmt-tag');
+                    if (tag) openEditModal(tag.dataset.name);
+                }
+            });
+
+            // 드래그 선택 로직
+            attendanceGrid.addEventListener('mousedown', (e) => {
+                const cell = e.target.closest('.attendance-cell');
+                if (!cell || modal.classList.contains('hidden') === false) return;
+                e.preventDefault();
+                isDragging = true;
+                clearCellSelections();
+                startCell = cell;
+                selectedCells.add(cell.dataset.id);
+                cell.classList.add('cell-selected');
+            });
+
+            attendanceGrid.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const currentCell = e.target.closest('.attendance-cell');
+                if (!currentCell) return;
+                
+                const [startDay, startPeriod] = startCell.dataset.id.split('-').map(Number);
+                const [currentDay, currentPeriod] = currentCell.dataset.id.split('-').map(Number);
+                const minDay = Math.min(startDay, currentDay);
+                const maxDay = Math.max(startDay, currentDay);
+                const minPeriod = Math.min(startPeriod, currentPeriod);
+                const maxPeriod = Math.max(startPeriod, currentPeriod);
+
+                const newSelectedCells = new Set();
+                for (let p = minPeriod; p <= maxPeriod; p++) {
+                    for (let d = minDay; d <= maxDay; d++) {
+                        newSelectedCells.add(`${d}-${p}`);
+                    }
+                }
+
+                selectedCells.forEach(id => {
+                    if (!newSelectedCells.has(id)) {
+                        attendanceGrid.querySelector(`[data-id="${id}"]`)?.classList.remove('cell-selected');
+                    }
+                });
+                newSelectedCells.forEach(id => {
+                    if (!selectedCells.has(id)) {
+                        attendanceGrid.querySelector(`[data-id="${id}"]`)?.classList.add('cell-selected');
+                    }
+                });
+                
+                selectedCells.clear();
+                newSelectedCells.forEach(id => selectedCells.add(id));
+            });
+            
+            window.addEventListener('mouseup', () => {
+                if (!isDragging) return;
+                isDragging = false;
+                if (selectedCells.size > 0) {
+                    openModal();
+                }
+            });
+
+            // 모달 상호작용
+            customInput.addEventListener('input', () => {
+                if (customInput.value.trim() !== '') {
+                    modalStudentList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+                }
+            });
+            modalStudentList.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox' && e.target.checked) {
+                    customInput.value = '';
+                }
+            });
+
+            modalCancel.addEventListener('click', () => closeModal());
+            modalConfirm.addEventListener('click', () => {
+                if (selectedCells.size === 0) return;
+                
+                const weekKey = weekDates[0];
+                if (!allAttendanceData[weekKey]) allAttendanceData[weekKey] = {};
+
+                const customText = customInput.value.trim();
+                
+                selectedCells.forEach(cellId => {
+                    if (customText) {
+                        allAttendanceData[weekKey][cellId] = { type: 'custom', text: customText, color: customTextColorPicker.value };
+                    } else {
+                        const selectedStudents = Array.from(modalStudentList.querySelectorAll('input:checked')).map(cb => cb.dataset.name);
+                        if (selectedStudents.length > 0) {
+                            allAttendanceData[weekKey][cellId] = { type: 'students', names: selectedStudents };
+                        } else {
+                            delete allAttendanceData[weekKey][cellId];
+                        }
+                    }
+                });
+                
+                renderAttendanceGrid();
+                closeModal();
+            });
+
+            // 수정 모달 이벤트
+            editColorOptions.addEventListener('click', (e) => {
+                const targetColor = e.target.dataset.color;
+                if (targetColor) {
+                    customColorPicker.value = targetColor;
+                    editColorOptions.querySelectorAll('div').forEach(div => div.style.borderColor = 'transparent');
+                    e.target.style.borderColor = '#3b82f6';
+                }
+            });
+            customColorPicker.addEventListener('input', () => {
+                 editColorOptions.querySelectorAll('div').forEach(div => div.style.borderColor = 'transparent');
+            });
+
+            editModalCancel.addEventListener('click', closeEditModal);
+            editModalConfirm.addEventListener('click', () => {
+                const originalName = originalStudentNameInput.value;
+                const newName = editStudentNameInput.value.trim();
+                const newColor = customColorPicker.value;
+
+                if (!newName) return showToast("학생 이름은 비워둘 수 없습니다.");
+                if (students.some(s => s.name === newName && s.name !== originalName)) return showToast("이미 존재하는 학생 이름입니다.");
+
+                const studentToUpdate = students.find(s => s.name === originalName);
+                if (!studentToUpdate) return closeEditModal();
+                
+                if (originalName !== newName) {
+                    Object.keys(allAttendanceData).forEach(weekKey => {
+                        Object.keys(allAttendanceData[weekKey]).forEach(cellId => {
+                            const cellData = allAttendanceData[weekKey][cellId];
+                            if (cellData.type === 'students') {
+                                const studentIndex = cellData.names.indexOf(originalName);
+                                if (studentIndex > -1) cellData.names[studentIndex] = newName;
+                            }
+                        });
+                    });
+                }
+                
+                studentToUpdate.name = newName;
+                studentToUpdate.color = newColor;
+                
+                renderStudentList();
+                renderAttendanceGrid();
+                closeEditModal();
+            });
+
+            loadData();
+        });
+    </script>
+</body>
+</html>
