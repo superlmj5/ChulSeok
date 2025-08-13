@@ -6,21 +6,17 @@
     <title>학생 출석부</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <style>
         body {
             font-family: 'Noto Sans KR', sans-serif;
             user-select: none; /* 드래그 시 텍스트 선택 방지 */
         }
         .student-tag {
-            display: flex;
-            align-items: center;
-            justify-content: center;
             padding: 4px 8px;
             border-radius: 12px;
             font-size: 0.8rem;
             margin: 1px;
+            text-align: center;
             color: #333;
             font-weight: 500;
             width: 100%;
@@ -35,16 +31,16 @@
         #student-list { }
         .attendance-cell {
             height: 105px;
-            width: 110px;
+            min-width: 100px;
             cursor: pointer;
             transition: background-color 0.2s;
             vertical-align: top;
-            border: 1px solid #e5e7eb; /* 기본 테두리 추가 */
+            border: 1px solid #e5e7eb;
             box-sizing: border-box;
         }
         .attendance-cell.cell-selected {
             background-color: #dbeafe;
-            border: 2px solid #60a5fa; /* 선택 시 테두리 강조 */
+            border: 2px solid #60a5fa;
         }
         .student-grid-container {
             display: grid;
@@ -73,7 +69,7 @@
             text-align: center;
         }
         #print-area table {
-            table-layout: fixed;
+            width: 100%;
         }
         #custom-color-picker, #custom-text-color-picker {
             -webkit-appearance: none;
@@ -84,23 +80,68 @@
             cursor: pointer;
         }
         #custom-color-picker::-webkit-color-swatch, #custom-text-color-picker::-webkit-color-swatch {
-            border-radius: 0.5rem; /* 크기에 맞춰 둥글게 조정 */
+            border-radius: 0.5rem;
             border: 1px solid #d1d5db;
         }
         #custom-color-picker::-moz-color-swatch, #custom-text-color-picker::-moz-color-swatch {
-            border-radius: 0.5rem; /* 크기에 맞춰 둥글게 조정 */
+            border-radius: 0.5rem;
             border: 1px solid #d1d5db;
         }
 
         @media print {
-            body * { visibility: hidden; }
-            #print-area, #print-area * { visibility: visible; }
-            #print-area { position: absolute; left: 0; top: 0; width: 100%; }
-            .no-print { display: none; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #ccc; padding: 8px; }
-            .student-tag { border: 1px solid #ddd; }
-            .date-input-wrapper { display: none; }
+            body > .container, .no-print, #student-select-modal, #edit-student-modal, #toast-message {
+                display: none !important;
+            }
+            #print-container {
+                display: block !important;
+            }
+            .page-break {
+                page-break-after: always;
+                height: 98vh;
+                box-sizing: border-box;
+            }
+            .print-grid-container {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                grid-template-rows: repeat(2, auto);
+                gap: 1.5rem;
+                height: 100%;
+            }
+            .print-grid-container table {
+                font-size: 0.6rem;
+                table-layout: fixed;
+            }
+            .print-grid-container .attendance-cell {
+                height: 45px; /* 인쇄 시 셀 높이 조정 */
+                padding: 0;
+            }
+            .print-grid-container .student-grid-container {
+                gap: 1px; /* 여백 줄이기 */
+                padding: 1px;
+                height: 100%;
+                box-sizing: border-box;
+            }
+            .print-grid-container .student-tag {
+                font-size: 0.45rem;
+                padding: 1px 2px;
+                border-radius: 6px;
+                word-break: break-all;
+            }
+            .print-grid-container .custom-text-container {
+                font-size: 0.7rem;
+            }
+            .print-grid-container th, .print-grid-container td {
+                padding: 2px;
+                border: 1px solid #ccc !important;
+            }
+            .student-tag {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .custom-text-container {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
         }
     </style>
 </head>
@@ -226,11 +267,7 @@
 
             function formatDate(date) { return date.toISOString().split('T')[0]; }
 
-            function loadData() {
-                // This function now initializes the application state.
-                students = [];
-                allAttendanceData = {};
-                
+            function initialize() {
                 const monday = getMonday(new Date());
                 weekDates = Array.from({length: 5}, (_, i) => {
                     const date = new Date(monday);
@@ -241,25 +278,6 @@
                 renderStudentList();
                 renderTableHeader();
                 renderAttendanceGrid();
-            }
-
-            function saveData() {
-                const dataToSave = {
-                    students: students,
-                    allAttendanceData: allAttendanceData,
-                    weekDates: weekDates
-                };
-                const dataStr = JSON.stringify(dataToSave, null, 2);
-                const blob = new Blob([dataStr], {type: 'application/json'});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'attendance_data.json';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                showToast("파일이 성공적으로 저장되었습니다.");
             }
             
             function showToast(message) {
@@ -367,7 +385,7 @@
                                     const tag = document.createElement('div');
                                     tag.className = 'student-tag';
                                     tag.style.backgroundColor = student.color;
-                                    tag.innerHTML = `<span>${student.name}</span>`;
+                                    tag.textContent = student.name;
                                     gridContainer.appendChild(tag);
                                 }
                             });
@@ -449,104 +467,149 @@
                 selectedCells.clear();
             }
 
+            function generateTableForWeek(weekKey, weekData) {
+                const monday = new Date(weekKey);
+                const weekDatesForTable = Array.from({length: 5}, (_, i) => {
+                    const date = new Date(monday);
+                    date.setDate(monday.getDate() + i);
+                    return formatDate(date);
+                });
+
+                const dayNames = ['월', '화', '수', '목', '금'];
+                let headerHtml = '<thead><tr><th style="width: 12%;"></th>';
+                weekDatesForTable.forEach(dateStr => {
+                    const date = new Date(dateStr);
+                    const dayName = dayNames[date.getDay() - 1];
+                    headerHtml += `<th><div class="font-semibold">${dateStr.substring(5).replace('-', '/')} (${dayName})</div></th>`;
+                });
+                headerHtml += '</tr></thead>';
+
+                let bodyHtml = '<tbody>';
+                for (let period = 1; period <= 6; period++) {
+                    bodyHtml += `<tr><td class="p-4 font-semibold border">${period}교시</td>`;
+                    for (let dayIndex = 0; dayIndex < 5; dayIndex++) {
+                        const cellId = `${dayIndex}-${period}`;
+                        const cellData = weekData[cellId];
+                        bodyHtml += '<td class="p-1 border attendance-cell">';
+                        if (cellData && cellData.type === 'custom') {
+                            bodyHtml += `<div class="custom-text-container" style="color: ${cellData.color || '#000000'}">${cellData.text}</div>`;
+                        } else {
+                            bodyHtml += '<div class="student-grid-container">';
+                            const presentStudents = cellData ? cellData.names : [];
+                            presentStudents.forEach(studentName => {
+                                const student = students.find(s => s.name === studentName);
+                                if (student) {
+                                    bodyHtml += `<div class="student-tag" style="background-color: ${student.color};">${student.name}</div>`;
+                                }
+                            });
+                            bodyHtml += '</div>';
+                        }
+                        bodyHtml += '</td>';
+                    }
+                    bodyHtml += '</tr>';
+                }
+                bodyHtml += '</tbody>';
+
+                return `<table class="w-full text-center">${headerHtml}${bodyHtml}</table>`;
+            }
+
             // --- 이벤트 리스너 ---
             addStudentButton.addEventListener('click', addStudent);
             studentNameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addStudent(); });
-            saveButton.addEventListener('click', saveData);
             
-            const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.accept = '.json';
-            fileInput.style.display = 'none';
-            document.body.appendChild(fileInput);
-
-            fileInput.addEventListener('change', (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const data = JSON.parse(e.target.result);
-                        if (data && data.students && data.allAttendanceData && data.weekDates) {
-                            students = data.students;
-                            allAttendanceData = data.allAttendanceData;
-                            weekDates = data.weekDates;
-                            
-                            renderStudentList();
-                            renderTableHeader();
-                            renderAttendanceGrid();
-                            showToast("데이터를 성공적으로 불러왔습니다.");
-                        } else {
-                            showToast("잘못된 파일 형식입니다.");
-                        }
-                    } catch (error) {
-                        showToast("파일을 읽는 중 오류가 발생했습니다.");
-                        console.error("Error parsing JSON file:", error);
-                    }
+            saveButton.addEventListener('click', () => {
+                const dataToSave = {
+                    students: students,
+                    allAttendanceData: allAttendanceData
                 };
-                reader.readAsText(file);
-                fileInput.value = ''; // Allow re-loading the same file
+                const dataStr = JSON.stringify(dataToSave, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const today = new Date().toISOString().slice(0, 10);
+                a.download = `attendance-data-${today}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast("파일이 저장되었습니다.");
             });
 
             loadButton.addEventListener('click', () => {
-                fileInput.click();
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = e => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = event => {
+                        try {
+                            const loadedData = JSON.parse(event.target.result);
+                            if (loadedData.students && loadedData.allAttendanceData) {
+                                students = loadedData.students;
+                                allAttendanceData = loadedData.allAttendanceData;
+
+                                initialize(); // Re-initialize the view with loaded data
+                                showToast("데이터를 불러왔습니다.");
+                            } else {
+                                showToast("유효하지 않은 파일 형식입니다.");
+                            }
+                        } catch (error) {
+                            showToast("파일을 읽는 중 오류가 발생했습니다.");
+                            console.error("Error parsing JSON file:", error);
+                        }
+                    };
+                    reader.readAsText(file);
+                };
+                input.click();
             });
             
             printButton.addEventListener('click', () => {
-                const printArea = document.getElementById('print-area');
-                const datePickerWrapper = printArea.querySelector('.date-input-wrapper');
-                const gridContainers = printArea.querySelectorAll('.student-grid-container');
-                const { jsPDF } = window.jspdf;
-
-                // --- PDF 캡처 전처리 ---
-                // 1. PDF에 불필요한 날짜 선택 UI를 보이지 않게 처리합니다.
-                if (datePickerWrapper) {
-                    datePickerWrapper.style.visibility = 'hidden';
+                let printContainer = document.getElementById('print-container');
+                if(printContainer) {
+                    printContainer.remove();
                 }
-                // 2. html2canvas의 렌더링 오류를 해결하기 위해, 컨테이너의 높이를
-                //    %가 아닌 px 단위의 고정 값으로 명시적으로 설정합니다.
-                gridContainers.forEach(container => {
-                    container.style.boxSizing = 'border-box';
-                    if (container.parentElement) {
-                         container.style.height = container.parentElement.clientHeight + 'px';
-                    }
-                });
+                
+                printContainer = document.createElement('div');
+                printContainer.id = 'print-container';
+                printContainer.style.display = 'none';
 
-                showToast('PDF 생성 중... 잠시만 기다려주세요.');
+                const sortedWeekKeys = Object.keys(allAttendanceData)
+                    .filter(weekKey => Object.keys(allAttendanceData[weekKey]).length > 0)
+                    .sort();
 
-                const cleanup = () => {
-                    // --- 캡처 후 스타일 원상 복구 ---
-                    if (datePickerWrapper) {
-                        datePickerWrapper.style.visibility = 'visible';
-                    }
-                    gridContainers.forEach(container => {
-                        container.style.boxSizing = '';
-                        container.style.height = '';
+                if (sortedWeekKeys.length === 0) {
+                    showToast("출력할 저장된 데이터가 없습니다.");
+                    return;
+                }
+                
+                for (let i = 0; i < sortedWeekKeys.length; i += 4) {
+                    const pageWrapper = document.createElement('div');
+                    pageWrapper.className = 'page-break';
+
+                    const gridContainer = document.createElement('div');
+                    gridContainer.className = 'print-grid-container';
+
+                    const chunk = sortedWeekKeys.slice(i, i + 4);
+                    chunk.forEach(weekKey => {
+                        const weekData = allAttendanceData[weekKey];
+                        const tableHtml = generateTableForWeek(weekKey, weekData);
+                        const tableWrapper = document.createElement('div');
+                        tableWrapper.innerHTML = tableHtml;
+                        gridContainer.appendChild(tableWrapper);
                     });
-                };
+                    
+                    pageWrapper.appendChild(gridContainer);
+                    printContainer.appendChild(pageWrapper);
+                }
 
-                // 폰트 로딩 및 스타일 적용 시간을 확보하기 위해 지연 후 캡처 실행
-                setTimeout(() => {
-                    html2canvas(printArea, { scale: 2, useCORS: true }).then(canvas => {
-                        const imgData = canvas.toDataURL('image/png');
-                        const orientation = canvas.width > canvas.height ? 'l' : 'p';
-                        const pdf = new jsPDF({
-                            orientation: orientation,
-                            unit: 'pt',
-                            format: [canvas.width, canvas.height]
-                        });
 
-                        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-                        pdf.save('출석부.pdf');
-                        showToast('PDF가 성공적으로 저장되었습니다.');
-                    }).catch(err => {
-                        showToast('PDF 생성에 실패했습니다.');
-                        console.error('PDF generation failed:', err);
-                    }).finally(() => {
-                        cleanup();
-                    });
-                }, 500);
+                document.body.appendChild(printContainer);
+
+                window.print();
             });
 
             studentListContainer.addEventListener('click', (e) => {
@@ -560,22 +623,18 @@
                 }
             });
 
-            // 드래그 선택 로직
-            attendanceGrid.addEventListener('mousedown', (e) => {
-                const cell = e.target.closest('.attendance-cell');
-                if (!cell || modal.classList.contains('hidden') === false) return;
-                e.preventDefault();
+            // 드래그 선택 로직 (마우스 & 터치)
+            function handleDragStart(cell) {
+                if (!cell || !modal.classList.contains('hidden')) return;
                 isDragging = true;
                 clearCellSelections();
                 startCell = cell;
                 selectedCells.add(cell.dataset.id);
                 cell.classList.add('cell-selected');
-            });
+            }
 
-            attendanceGrid.addEventListener('mousemove', (e) => {
-                if (!isDragging) return;
-                const currentCell = e.target.closest('.attendance-cell');
-                if (!currentCell) return;
+            function handleDragMove(currentCell) {
+                if (!isDragging || !currentCell) return;
                 
                 const [startDay, startPeriod] = startCell.dataset.id.split('-').map(Number);
                 const [currentDay, currentPeriod] = currentCell.dataset.id.split('-').map(Number);
@@ -604,16 +663,37 @@
                 
                 selectedCells.clear();
                 newSelectedCells.forEach(id => selectedCells.add(id));
-            });
-            
-            window.addEventListener('mouseup', () => {
+            }
+
+            function handleDragEnd() {
                 if (!isDragging) return;
                 isDragging = false;
                 if (selectedCells.size > 0) {
                     openModal();
                 }
-            });
+            }
 
+            attendanceGrid.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                handleDragStart(e.target.closest('.attendance-cell'));
+            });
+            attendanceGrid.addEventListener('mousemove', (e) => {
+                handleDragMove(e.target.closest('.attendance-cell'));
+            });
+            window.addEventListener('mouseup', handleDragEnd);
+
+            attendanceGrid.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                handleDragStart(document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.attendance-cell'));
+            }, { passive: false });
+            attendanceGrid.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                handleDragMove(document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.attendance-cell'));
+            }, { passive: false });
+            window.addEventListener('touchend', handleDragEnd);
+            
             // 모달 상호작용
             customInput.addEventListener('input', () => {
                 if (customInput.value.trim() !== '') {
@@ -662,7 +742,7 @@
                 }
             });
             customColorPicker.addEventListener('input', () => {
-                 editColorOptions.querySelectorAll('div').forEach(div => div.style.borderColor = 'transparent');
+                editColorOptions.querySelectorAll('div').forEach(div => div.style.borderColor = 'transparent');
             });
 
             editModalCancel.addEventListener('click', closeEditModal);
@@ -671,11 +751,20 @@
                 const newName = editStudentNameInput.value.trim();
                 const newColor = customColorPicker.value;
 
-                if (!newName) return showToast("학생 이름은 비워둘 수 없습니다.");
-                if (students.some(s => s.name === newName && s.name !== originalName)) return showToast("이미 존재하는 학생 이름입니다.");
+                if (!newName) {
+                    showToast("학생 이름은 비워둘 수 없습니다.");
+                    return;
+                }
+                if (students.some(s => s.name === newName && s.name !== originalName)) {
+                    showToast("이미 존재하는 학생 이름입니다.");
+                    return;
+                }
 
                 const studentToUpdate = students.find(s => s.name === originalName);
-                if (!studentToUpdate) return closeEditModal();
+                if (!studentToUpdate) {
+                    closeEditModal();
+                    return;
+                }
                 
                 if (originalName !== newName) {
                     Object.keys(allAttendanceData).forEach(weekKey => {
@@ -697,7 +786,7 @@
                 closeEditModal();
             });
 
-            loadData();
+            initialize();
         });
     </script>
 </body>
