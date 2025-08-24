@@ -110,16 +110,22 @@
             .print-grid-container table {
                 font-size: 0.6rem;
                 table-layout: fixed;
+                width: 100%;
             }
             .print-grid-container .attendance-cell {
-                height: 45px; /* 인쇄 시 셀 높이 조정 */
+                height: 48px;
                 padding: 0;
             }
             .print-grid-container .student-grid-container {
-                gap: 1px; /* 여백 줄이기 */
-                padding: 1px;
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1px;
+                width: 100%;
                 height: 100%;
+                padding: 1px;
                 box-sizing: border-box;
+                align-content: center; /* 수직 중앙 정렬 */
+                justify-content: center; /* 수평 중앙 정렬 */
             }
             .print-grid-container .student-tag {
                 font-size: 0.45rem;
@@ -490,7 +496,7 @@
                     for (let dayIndex = 0; dayIndex < 5; dayIndex++) {
                         const cellId = `${dayIndex}-${period}`;
                         const cellData = weekData[cellId];
-                        bodyHtml += '<td class="p-1 border attendance-cell">';
+                        bodyHtml += '<td class="attendance-cell">';
                         if (cellData && cellData.type === 'custom') {
                             bodyHtml += `<div class="custom-text-container" style="color: ${cellData.color || '#000000'}">${cellData.text}</div>`;
                         } else {
