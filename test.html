@@ -491,7 +491,8 @@
                 });
 
                 const dayNames = ['월', '화', '수', '목', '금'];
-                let headerHtml = '<thead><tr><th style="width: 12%;"></th>';
+                const year = monday.getFullYear();
+                let headerHtml = `<thead><tr><th style="width: 12%;">${year}</th>`;
                 weekDatesForTable.forEach(dateStr => {
                     const date = new Date(dateStr);
                     const dayName = dayNames[date.getDay() - 1];
