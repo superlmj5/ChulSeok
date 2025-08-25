@@ -117,17 +117,24 @@
                 padding: 0;
             }
             .print-grid-container .student-grid-container {
-                display: grid;
-                grid-template-columns: repeat(2, 1fr);
+                display: flex;
+                flex-wrap: wrap;
                 gap: 1px;
                 width: 100%;
                 height: 100%;
                 padding: 1px;
                 box-sizing: border-box;
-                align-content: center; /* 수직 중앙 정렬 */
-                justify-content: center; /* 수평 중앙 정렬 */
-                align-items: center; /* 각 그리드 아이템 수직 중앙 정렬 */
-                justify-items: center; /* 각 그리드 아이템 수평 중앙 정렬 */
+                align-content: center;
+                justify-content: center;
+                align-items: center;
+            }
+            .print-grid-container .student-grid-container .student-tag {
+                flex: 0 0 calc(50% - 0.5px);
+                max-width: calc(50% - 0.5px);
+            }
+            .print-grid-container .student-grid-container .student-tag:only-child {
+                flex: 0 0 auto;
+                max-width: 60%;
             }
             .print-grid-container .student-tag {
                 font-size: 0.45rem;
