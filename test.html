@@ -540,57 +540,43 @@
             addStudentButton.addEventListener('click', addStudent);
             studentNameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addStudent(); });
             
-            saveButton.addEventListener('click', () => {
+            saveButton.addEventListener('click', async () => {
                 const dataToSave = {
                     students: students,
                     allAttendanceData: allAttendanceData
                 };
                 const dataStr = JSON.stringify(dataToSave, null, 2);
-                const blob = new Blob([dataStr], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                const today = new Date().toISOString().slice(0, 10);
-                a.download = `attendance-data-${today}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                showToast("파일이 저장되었습니다.");
+                const result = await window.electronAPI.saveFile(dataStr);
+                if (result.success) {
+                    showToast(`파일이 저장되었습니다: ${result.path}`);
+                } else if (result.error !== 'No path selected') {
+                    showToast(`파일 저장 실패: ${result.error}`);
+                }
             });
 
-            loadButton.addEventListener('click', () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.json';
-                input.onchange = e => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-
-                    const reader = new FileReader();
-                    reader.onload = event => {
-                        try {
-                            const loadedData = JSON.parse(event.target.result);
-                            if (loadedData.students && loadedData.allAttendanceData) {
-                                students = loadedData.students;
-                                allAttendanceData = loadedData.allAttendanceData;
-
-                                initialize(); // Re-initialize the view with loaded data
-                                showToast("데이터를 불러왔습니다.");
-                            } else {
-                                showToast("유효하지 않은 파일 형식입니다.");
-                            }
-                        } catch (error) {
-                            showToast("파일을 읽는 중 오류가 발생했습니다.");
-                            console.error("Error parsing JSON file:", error);
+            loadButton.addEventListener('click', async () => {
+                const result = await window.electronAPI.loadFile();
+                if (result.success) {
+                    try {
+                        const loadedData = JSON.parse(result.data);
+                        if (loadedData.students && loadedData.allAttendanceData) {
+                            students = loadedData.students;
+                            allAttendanceData = loadedData.allAttendanceData;
+                            initialize();
+                            showToast("데이터를 불러왔습니다.");
+                        } else {
+                            showToast("유효하지 않은 파일 형식입니다.");
                         }
-                    };
-                    reader.readAsText(file);
-                };
-                input.click();
+                    } catch (error) {
+                        showToast("파일을 읽는 중 오류가 발생했습니다.");
+                        console.error("Error parsing JSON file:", error);
+                    }
+                } else if (result.error !== 'No file selected') {
+                    showToast(`파일 불러오기 실패: ${result.error}`);
+                }
             });
             
-            printButton.addEventListener('click', () => {
+            printButton.addEventListener('click', async () => {
                 let printContainer = document.getElementById('print-container');
                 if(printContainer) {
                     printContainer.remove();
@@ -598,8 +584,7 @@
                 
                 printContainer = document.createElement('div');
                 printContainer.id = 'print-container';
-                printContainer.style.display = 'none';
-
+                
                 const sortedWeekKeys = Object.keys(allAttendanceData)
                     .filter(weekKey => Object.keys(allAttendanceData[weekKey]).length > 0)
                     .sort();
@@ -629,10 +614,17 @@
                     printContainer.appendChild(pageWrapper);
                 }
 
-
                 document.body.appendChild(printContainer);
+                
+                const result = await window.electronAPI.printToPDF();
+                
+                document.body.removeChild(printContainer);
 
-                window.print();
+                if (result.success) {
+                    showToast(`PDF가 저장되었습니다: ${result.path}`);
+                } else if (result.error !== 'No path selected') {
+                    showToast(`PDF 저장 실패: ${result.error}`);
+                }
             });
 
             studentListContainer.addEventListener('click', (e) => {
