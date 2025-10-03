@@ -1,17 +1,27 @@
 {
   "name": "chulseok",
   "version": "1.0.0",
-  "description": "",
+  "description": "A desktop application for student attendance management.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "package": "electron-packager . --platform=win32 --arch=x64 --out=dist/ --overwrite",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:win": "npm run build:win32 && npm run build:win64",
+    "build:win32": "electron-builder --win portable --ia32",
+    "build:win64": "electron-builder --win portable --x64"
   },
+  "repository": "https://github.com/superlmj5/ChulSeok",
   "keywords": [],
-  "author": "",
+  "author": "superlmj5",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
     "electron": "^38.2.0"
+  },
+  "build": {
+    "win": {
+      "icon": "icon.ico"
+    }
   }
 }
